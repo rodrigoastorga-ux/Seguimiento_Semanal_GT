@@ -347,6 +347,22 @@
   .status-btn.active { border-color: var(--azul); color: var(--azul); background: var(--azul-soft); }
   .hidden { display: none !important; }
 
+  .export-modal { max-width: 640px; }
+  .export-hint { font-size: 13px; color: var(--ink-soft); margin: 0 0 12px; line-height: 1.5; }
+  #exportTextarea {
+    width: 100%;
+    height: 300px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    color: var(--ink);
+    border-radius: var(--radius);
+    padding: 10px;
+    font-family: monospace;
+    font-size: 11px;
+    resize: vertical;
+    white-space: pre;
+  }
+
   @media (max-width: 1150px) {
     .board { grid-template-columns: repeat(3, 1fr); }
     .meeting-mode .board { grid-template-columns: repeat(3, 1fr); }
@@ -479,6 +495,21 @@ Revisar el correo .
         </div>
       </div>
     </form>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="exportOverlay">
+  <div class="modal export-modal">
+    <h3>Copiar HTML actualizado</h3>
+    <p class="export-hint">Este es tu tablero completo, con las tareas y cambios actuales ya incluidos. Haz clic en "Copiar" o selecciona todo el texto (Ctrl+A / Cmd+A) y copia (Ctrl+C / Cmd+C) manualmente.</p>
+    <textarea id="exportTextarea" readonly=""></textarea>
+    <div class="modal-actions">
+      <div></div>
+      <div class="modal-actions-right">
+        <button type="button" class="btn-secondary" id="exportCloseBtn">Cerrar</button>
+        <button type="button" class="btn-primary" id="exportCopyBtn">Copiar</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -929,48 +960,58 @@ Revisar el correo .
     render();
   };
 
+  function buildExportHtml() {
+    var seedJson = JSON.stringify({ tasks: state.tasks, meetingMode: state.meetingMode });
+    var fullHtml = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+    fullHtml = fullHtml.replace(
+      /(<script id="seed-data" type="application\/json">)([\s\S]*?)(<\/script>)/,
+      function(match, open, _old, close) { return open + seedJson + close; }
+    );
+    return fullHtml;
+  }
+
+  var exportOverlay = document.getElementById("exportOverlay");
+  var exportTextarea = document.getElementById("exportTextarea");
+
   document.getElementById("copyHtmlBtn").onclick = function() {
-    var btn = document.getElementById("copyHtmlBtn");
-    try {
-      var seedJson = JSON.stringify({ tasks: state.tasks, meetingMode: state.meetingMode });
-      var fullHtml = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
-      fullHtml = fullHtml.replace(
-        /(<script id="seed-data" type="application\/json">)([\s\S]*?)(<\/script>)/,
-        function(match, open, _old, close) { return open + seedJson + close; }
-      );
-
-      function showCopied() {
-        var original = btn.textContent;
-        btn.textContent = "¡Copiado!";
-        setTimeout(function() { btn.textContent = original; }, 1800);
-      }
-
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(fullHtml).then(showCopied).catch(function() {
-          fallbackCopy(fullHtml, showCopied);
-        });
-      } else {
-        fallbackCopy(fullHtml, showCopied);
-      }
-    } catch (e) {
-      console.error("No se pudo copiar el HTML:", e);
-      btn.textContent = "Error al copiar";
-      setTimeout(function() { btn.textContent = "Copiar HTML"; }, 1800);
-    }
+    exportTextarea.value = buildExportHtml();
+    exportOverlay.classList.remove("hidden");
+    exportTextarea.focus();
+    exportTextarea.select();
   };
 
-  function fallbackCopy(text, onDone) {
-    var ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    try { document.execCommand("copy"); onDone(); }
-    catch (e) { console.error("No se pudo copiar el HTML:", e); }
-    document.body.removeChild(ta);
-  }
+  document.getElementById("exportCloseBtn").onclick = function() {
+    exportOverlay.classList.add("hidden");
+  };
+  exportOverlay.addEventListener("click", function(e) {
+    if (e.target === exportOverlay) exportOverlay.classList.add("hidden");
+  });
+
+  document.getElementById("exportCopyBtn").onclick = function() {
+    var btn = document.getElementById("exportCopyBtn");
+    exportTextarea.focus();
+    exportTextarea.select();
+    function ok() {
+      var original = btn.textContent;
+      btn.textContent = "¡Copiado!";
+      setTimeout(function() { btn.textContent = original; }, 1800);
+    }
+    function fail() {
+      btn.textContent = "Selecciona y copia (Ctrl+C)";
+      setTimeout(function() { btn.textContent = "Copiar"; }, 2200);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(exportTextarea.value).then(ok).catch(function() {
+        try {
+          if (document.execCommand("copy")) ok(); else fail();
+        } catch (e) { fail(); }
+      });
+    } else {
+      try {
+        if (document.execCommand("copy")) ok(); else fail();
+      } catch (e) { fail(); }
+    }
+  };
 
   document.getElementById("searchInput").addEventListener("input", function(e) {
     state.searchQuery = e.target.value;
